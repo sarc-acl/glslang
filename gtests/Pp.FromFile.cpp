@@ -69,7 +69,13 @@ INSTANTIATE_TEST_SUITE_P(
         "preprocessor.eof_missing.vert",
         "preprocess.arb_shading_language_include.vert",
         "preprocess.include_directive_missing_extension.vert",
-        "preprocess.inactive_stringify.vert"
+        "preprocess.inactive_stringify.vert",
+        "preprocessor.paste_stringify.vert",
+        "preprocessor.stringify_invalid.vert",
+        "preprocessor.shift_out_of_range.vert",
+        "preprocessor.elseseen.oob.vert",
+        "preprocessor.macro.recursion.vert",
+        "preprocessor.string_escaping.frag",
     })),
     FileNameAsCustomTestSuffix
 );

@@ -233,12 +233,17 @@ typedef struct glslang_spv_options_s {
     bool strip_debug_info;
     bool disable_optimizer;
     bool optimize_size;
+    bool optimize_performance;
     bool disassemble;
     bool validate;
     bool emit_nonsemantic_shader_debug_info;
     bool emit_nonsemantic_shader_debug_source;
     bool compile_only;
     bool optimize_allow_expanded_id_bound;
+    /* Optional metadata overrides for reproducing compilation */
+    const char* compiler_signature;
+    const char* command_line_arguments;
+    const char* current_working_directory;
 } glslang_spv_options_t;
 
 #ifdef __cplusplus
@@ -253,6 +258,11 @@ GLSLANG_EXPORT void glslang_finalize_process(void);
 GLSLANG_EXPORT glslang_shader_t* glslang_shader_create(const glslang_input_t* input);
 GLSLANG_EXPORT void glslang_shader_delete(glslang_shader_t* shader);
 GLSLANG_EXPORT void glslang_shader_set_preamble(glslang_shader_t* shader, const char* s);
+// Set a different entry point than main in GLSL that will be renamed to value set by glslang_shader_set_entry_point (SPIRV only).
+GLSLANG_EXPORT void glslang_shader_set_source_entry_point(glslang_shader_t* shader, const char* s);
+// Set a different entry point than main in output target (SPIRV only).
+GLSLANG_EXPORT void glslang_shader_set_entry_point(glslang_shader_t* shader, const char* s);
+GLSLANG_EXPORT void glslang_shader_set_invert_y(glslang_shader_t* shader, bool y);
 GLSLANG_EXPORT void glslang_shader_shift_binding(glslang_shader_t* shader, glslang_resource_type_t res, unsigned int base);
 GLSLANG_EXPORT void glslang_shader_shift_binding_for_set(glslang_shader_t* shader, glslang_resource_type_t res, unsigned int base, unsigned int set);
 GLSLANG_EXPORT void glslang_shader_set_options(glslang_shader_t* shader, int options); // glslang_shader_options_t
@@ -284,7 +294,7 @@ GLSLANG_EXPORT const char* glslang_program_SPIRV_get_messages(glslang_program_t*
 GLSLANG_EXPORT const char* glslang_program_get_info_log(glslang_program_t* program);
 GLSLANG_EXPORT const char* glslang_program_get_info_debug_log(glslang_program_t* program);
 
-GLSLANG_EXPORT glslang_mapper_t* glslang_glsl_mapper_create();
+GLSLANG_EXPORT glslang_mapper_t* glslang_glsl_mapper_create(void);
 GLSLANG_EXPORT void glslang_glsl_mapper_delete(glslang_mapper_t* mapper);
 
 GLSLANG_EXPORT glslang_resolver_t* glslang_glsl_resolver_create(glslang_program_t* program, glslang_stage_t stage);

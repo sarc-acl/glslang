@@ -48,6 +48,7 @@
 #include <functional>
 #include <set>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 class TInfoSink;
@@ -227,9 +228,9 @@ class TVariable;
 // Texture and Sampler transformation mode.
 //
 enum ComputeDerivativeMode {
-    LayoutDerivativeNone,         // default layout as SPV_NV_compute_shader_derivatives not enabled
-    LayoutDerivativeGroupQuads,   // derivative_group_quadsNV
-    LayoutDerivativeGroupLinear,  // derivative_group_linearNV
+    LayoutDerivativeNone,
+    LayoutDerivativeGroupQuads,
+    LayoutDerivativeGroupLinear,
 };
 
 //
@@ -268,6 +269,7 @@ public:
         gpu_shader_fp64                           = 1 << 9,
         gpu_shader_int16                          = 1 << 10,
         gpu_shader_half_float                     = 1 << 11,
+        nv_gpu_shader5_types                      = 1 << 12,
     } feature;
     void insert(feature f) { features |= f; }
     void erase(feature f) { features &= ~f; }
@@ -276,7 +278,7 @@ private:
     unsigned int features;
 };
 
-// MustBeAssigned wraps a T, asserting that it has been assigned with 
+// MustBeAssigned wraps a T, asserting that it has been assigned with
 // operator =() before attempting to read with operator T() or operator ->().
 // Used to catch cases where fields are read before they have been assigned.
 template<typename T>
@@ -287,7 +289,7 @@ public:
     MustBeAssigned(const T& v) : value(v) {}
     operator const T&() const { assert(isSet); return value; }
     const T* operator ->() const { assert(isSet); return &value; }
-    MustBeAssigned& operator = (const T& v) { value = v; isSet = true; return *this; } 
+    MustBeAssigned& operator = (const T& v) { value = v; isSet = true; return *this; }
 private:
     T value;
     bool isSet = false;
@@ -311,14 +313,15 @@ public:
         useStorageBuffer(false),
         invariantAll(false),
         nanMinMaxClamp(false),
+        discardIsTerminate(false),
         depthReplacing(false),
         stencilReplacing(false),
         uniqueId(0),
         globalUniformBlockName(""),
         atomicCounterBlockName(""),
-        globalUniformBlockSet(TQualifier::layoutSetEnd),
-        globalUniformBlockBinding(TQualifier::layoutBindingEnd),
-        atomicCounterBlockSet(TQualifier::layoutSetEnd),
+        globalUniformBlockSet(TQualifier::layoutNotSet),
+        globalUniformBlockBinding(TQualifier::layoutNotSet),
+        atomicCounterBlockSet(TQualifier::layoutNotSet),
         implicitThisName("@this"), implicitCounterName("@count"),
         source(EShSourceNone),
         useVulkanMemoryModel(false),
@@ -338,17 +341,24 @@ public:
         geoPassthroughEXT(false),
         numShaderRecordBlocks(0),
         computeDerivativeMode(LayoutDerivativeNone),
+        computeDerivativeExtension(EdgNone),
         primitives(TQualifier::layoutNotSet),
         numTaskNVBlocks(0),
         layoutPrimitiveCulling(false),
+        usesOpacityMicromap2StateFlag(false),
+        enableOpacityMicromapSpecId(TQualifier::layoutNotSet),
+        enableOpacityMicromapDefault(false),
         numTaskEXTPayloads(0),
+        nonCoherentTileAttachmentReadQCOM(false),
         autoMapBindings(false),
         autoMapLocations(false),
+        relaxSetBindingLimits(false),
         flattenUniformArrays(false),
         useUnknownFormat(false),
         hlslOffsets(false),
         hlslIoMapping(false),
         useVariablePointers(false),
+        bindingsPerResourceType(false),
         textureSamplerTransformMode(EShTexSampTransKeep),
         needToLegalize(false),
         binaryDoubleOutput(false),
@@ -370,6 +380,12 @@ public:
         localSizeSpecId[1] = TQualifier::layoutNotSet;
         localSizeSpecId[2] = TQualifier::layoutNotSet;
         xfbBuffers.resize(TQualifier::layoutXfbBufferEnd);
+        tileShadingRateQCOM[0] = 0;
+        tileShadingRateQCOM[1] = 0;
+        tileShadingRateQCOM[2] = 0;
+        tileShadingRateQCOMNotDefault[0] = false;
+        tileShadingRateQCOMNotDefault[1] = false;
+        tileShadingRateQCOMNotDefault[2] = false;
         shiftBinding.fill(0);
     }
 
@@ -439,6 +455,9 @@ public:
         case EShTargetVulkan_1_3:
             processes.addProcess("target-env vulkan1.3");
             break;
+        case EShTargetVulkan_1_4:
+            processes.addProcess("target-env vulkan1.4");
+            break;
         default:
             processes.addProcess("target-env vulkanUnknown");
             break;
@@ -489,6 +508,7 @@ public:
             processes.addProcess("invert-y");
     }
     bool getInvertY() const { return invertY; }
+    void invertPositions(TIntermNode* root);
 
     void setDxPositionW(bool dxPosW)
     {
@@ -503,6 +523,14 @@ public:
         enhancedMsgs = true;
     }
     bool getEnhancedMsgs() const { return enhancedMsgs && getSource() == EShSourceGlsl; }
+
+    void setDiscardIsTerminate(bool discardIsTerminateP)
+    {
+        discardIsTerminate = discardIsTerminateP;
+        if (discardIsTerminate)
+            processes.addProcess("discard-is-terminate");
+    }
+    bool getDiscardIsTerminate() const { return discardIsTerminate; }
 
 #ifdef ENABLE_HLSL
     void setSource(EShSource s) { source = s; }
@@ -563,8 +591,8 @@ public:
     TIntermConstantUnion* addConstantUnion(const TString*, const TSourceLoc&, bool literal = false) const;
     TIntermTyped* promoteConstantUnion(TBasicType, TIntermConstantUnion*) const;
     bool parseConstTree(TIntermNode*, TConstUnionArray, TOperator, const TType&, bool singleConstantParam = false);
-    TIntermLoop* addLoop(TIntermNode*, TIntermTyped*, TIntermTyped*, bool testFirst, const TSourceLoc&);
-    TIntermAggregate* addForLoop(TIntermNode*, TIntermNode*, TIntermTyped*, TIntermTyped*, bool testFirst,
+    TIntermLoop* addLoop(TIntermNode*, TIntermNode*, TIntermTyped*, bool testFirst, const TSourceLoc&);
+    TIntermAggregate* addForLoop(TIntermNode*, TIntermNode*, TIntermNode*, TIntermTyped*, bool testFirst,
         const TSourceLoc&, TIntermLoop*&);
     TIntermBranch* addBranch(TOperator, const TSourceLoc&);
     TIntermBranch* addBranch(TOperator, TIntermTyped*, const TSourceLoc&);
@@ -595,15 +623,15 @@ public:
 
     void setGlobalUniformBlockName(const char* name) { globalUniformBlockName = std::string(name); }
     const char* getGlobalUniformBlockName() const { return globalUniformBlockName.c_str(); }
-    void setGlobalUniformSet(unsigned int set) { globalUniformBlockSet = set; }
-    unsigned int getGlobalUniformSet() const { return globalUniformBlockSet; }
-    void setGlobalUniformBinding(unsigned int binding) { globalUniformBlockBinding = binding; }
-    unsigned int getGlobalUniformBinding() const { return globalUniformBlockBinding; }
+    void setGlobalUniformSet(unsigned int set) { globalUniformBlockSet = static_cast<int>(set); }
+    int getGlobalUniformSet() const { return globalUniformBlockSet; }
+    void setGlobalUniformBinding(unsigned int binding) { globalUniformBlockBinding = static_cast<int>(binding); }
+    int getGlobalUniformBinding() const { return globalUniformBlockBinding; }
 
     void setAtomicCounterBlockName(const char* name) { atomicCounterBlockName = std::string(name); }
     const char* getAtomicCounterBlockName() const { return atomicCounterBlockName.c_str(); }
-    void setAtomicCounterBlockSet(unsigned int set) { atomicCounterBlockSet = set; }
-    unsigned int getAtomicCounterBlockSet() const { return atomicCounterBlockSet; }
+    void setAtomicCounterBlockSet(unsigned int set) { atomicCounterBlockSet = static_cast<int>(set); }
+    int getAtomicCounterBlockSet() const { return atomicCounterBlockSet; }
 
 
     void setUseStorageBuffer() { useStorageBuffer = true; }
@@ -646,6 +674,21 @@ public:
     void output(TInfoSink&, bool tree);
 
     bool isEsProfile() const { return profile == EEsProfile; }
+
+    bool setTileShadingRateQCOM(int dim, int size)
+    {
+        if (tileShadingRateQCOMNotDefault[dim])
+            return size == tileShadingRateQCOM[dim];
+        tileShadingRateQCOMNotDefault[dim] = true;
+        tileShadingRateQCOM[dim] = size;
+        return true;
+    }
+    unsigned int getTileShadingRateQCOM(int dim) const { return tileShadingRateQCOM[dim]; }
+    bool isTileShadingRateQCOMSet() const
+    {
+        // Return true if any component has been set (i.e. any component is not default).
+        return tileShadingRateQCOMNotDefault[0] || tileShadingRateQCOMNotDefault[1] || tileShadingRateQCOMNotDefault[2];
+    }
 
     void setShiftBinding(TResourceType res, unsigned int shift)
     {
@@ -704,6 +747,13 @@ public:
             processes.addProcess("auto-map-locations");
     }
     bool getAutoMapLocations() const { return autoMapLocations; }
+    void setRelaxSetBindingLimits(bool relax)
+    {
+        relaxSetBindingLimits = relax;
+        if (relaxSetBindingLimits)
+            processes.addProcess("relax-set-binding-limits");
+    }
+    bool getRelaxSetBindingLimits() const { return relaxSetBindingLimits; }
 
 #ifdef ENABLE_HLSL
     void setFlattenUniformArrays(bool flatten)
@@ -737,6 +787,16 @@ public:
         useReplicatedComposites = true;
     }
     bool usingReplicatedComposites() const { return useReplicatedComposites; }
+    void setPromoteUint32Indices()
+    {
+        promoteUint32Indices = true;
+    }
+    bool usingPromoteUint32Indices() const { return promoteUint32Indices; }
+    void setShader64BitIndexing()
+    {
+        shader64BitIndexing = true;
+    }
+    bool usingShader64BitIndexing() const { return shader64BitIndexing; }
     void setUseVariablePointers()
     {
         useVariablePointers = true;
@@ -802,6 +862,13 @@ public:
     }
 
     bool usingVariablePointers() const { return useVariablePointers; }
+
+    void setBindingsPerResourceType()
+    {
+        bindingsPerResourceType = true;
+        processes.addProcess("bindings-per-resource-type");
+    }
+    bool getBindingsPerResourceType() const { return bindingsPerResourceType; }
 
 #ifdef ENABLE_HLSL
     template<class T> T addCounterBufferName(const T& name) const { return name + implicitCounterName; }
@@ -892,6 +959,8 @@ public:
     bool getNonCoherentDepthAttachmentReadEXT() const { return nonCoherentDepthAttachmentReadEXT; }
     void setNonCoherentStencilAttachmentReadEXT() { nonCoherentStencilAttachmentReadEXT = true; }
     bool getNonCoherentStencilAttachmentReadEXT() const { return nonCoherentStencilAttachmentReadEXT; }
+    void setNonCoherentTileAttachmentReadQCOM() { nonCoherentTileAttachmentReadQCOM = true; }
+    bool getNonCoherentTileAttachmentReadQCOM() const { return nonCoherentTileAttachmentReadQCOM; }
     void setPostDepthCoverage() { postDepthCoverage = true; }
     bool getPostDepthCoverage() const { return postDepthCoverage; }
     void setEarlyFragmentTests() { earlyFragmentTests = true; }
@@ -937,11 +1006,28 @@ public:
     bool getLayoutOverrideCoverage() const { return layoutOverrideCoverage; }
     void setGeoPassthroughEXT() { geoPassthroughEXT = true; }
     bool getGeoPassthroughEXT() const { return geoPassthroughEXT; }
-    void setLayoutDerivativeMode(ComputeDerivativeMode mode) { computeDerivativeMode = mode; }
+    void setLayoutDerivativeMode(ComputeDerivativeMode mode, TDerivativeGroupExtension extension)
+    {
+        computeDerivativeMode = mode;
+        computeDerivativeExtension = extension;
+    }
     bool hasLayoutDerivativeModeNone() const { return computeDerivativeMode != LayoutDerivativeNone; }
     ComputeDerivativeMode getLayoutDerivativeModeNone() const { return computeDerivativeMode; }
+    TDerivativeGroupExtension getLayoutDerivativeExtension() const { return computeDerivativeExtension; }
     void setLayoutPrimitiveCulling() { layoutPrimitiveCulling = true; }
     bool getLayoutPrimitiveCulling() const { return layoutPrimitiveCulling; }
+    void setUsesOpacityMicromap2StateFlag() { usesOpacityMicromap2StateFlag = true; }
+    bool getUsesOpacityMicromap2StateFlag() const { return usesOpacityMicromap2StateFlag; }
+    // GL_EXT_opacity_micromap_ray_query_mode: state for the gl_EnableOpacityMicromapEXT built-in. When
+    // the extension is enabled the SPIR-V generator emits the OpacityMicromapIdKHR execution mode; the
+    // operand id depends on how the built-in was (re)declared:
+    //  - redeclared with a constant_id -> OpSpecConstantFalse decorated with that SpecId
+    //  - redeclared 'const bool = true' -> OpConstantTrue   (enableOpacityMicromapDefault == true)
+    //  - otherwise (default or '= false') -> OpConstantFalse
+    void setEnableOpacityMicromapSpecId(int id) { enableOpacityMicromapSpecId = id; }
+    int getEnableOpacityMicromapSpecId() const { return enableOpacityMicromapSpecId; }
+    void setEnableOpacityMicromapDefault(bool v) { enableOpacityMicromapDefault = v; }
+    bool getEnableOpacityMicromapDefault() const { return enableOpacityMicromapDefault; }
     bool setPrimitives(int m)
     {
         if (primitives != TQualifier::layoutNotSet)
@@ -1032,11 +1118,15 @@ public:
 #endif
 
     bool usingScalarBlockLayout() const {
-        for (auto extIt = requestedExtensions.begin(); extIt != requestedExtensions.end(); ++extIt) {
-            if (*extIt == E_GL_EXT_scalar_block_layout)
-                return true;
-        }
-        return false;
+        return IsRequestedExtension(E_GL_EXT_scalar_block_layout);
+    }
+
+    bool usingTextureOffsetNonConst() const {
+        return IsRequestedExtension(E_GL_EXT_texture_offset_non_const);
+    }
+
+    bool usingCoopMatMaint1() const {
+        return IsRequestedExtension(E_GL_EXT_cooperative_matrix_maintenance1);
     }
 
     bool IsRequestedExtension(const char* extension) const
@@ -1050,7 +1140,8 @@ public:
 
     void mergeGlobalUniformBlocks(TInfoSink& infoSink, TIntermediate& unit, bool mergeExistingOnly);
     void mergeUniformObjects(TInfoSink& infoSink, TIntermediate& unit);
-    void checkStageIO(TInfoSink&, TIntermediate&);
+    void mergeImplicitArraySizes(TInfoSink& infoSink, TIntermediate& unit);
+    void checkStageIO(TInfoSink&, TIntermediate&, EShMessages);
     void optimizeStageIO(TInfoSink&, TIntermediate&);
 
     bool buildConvertOp(TBasicType dst, TBasicType src, TOperator& convertOp) const;
@@ -1103,26 +1194,42 @@ public:
     // Certain explicit conversions are allowed conditionally
     bool getArithemeticInt8Enabled() const {
         return numericFeatures.contains(TNumericFeatures::shader_explicit_arithmetic_types) ||
+               numericFeatures.contains(TNumericFeatures::nv_gpu_shader5_types) ||
                numericFeatures.contains(TNumericFeatures::shader_explicit_arithmetic_types_int8);
     }
     bool getArithemeticInt16Enabled() const {
         return numericFeatures.contains(TNumericFeatures::shader_explicit_arithmetic_types) ||
                numericFeatures.contains(TNumericFeatures::gpu_shader_int16) ||
+               numericFeatures.contains(TNumericFeatures::nv_gpu_shader5_types) ||
                numericFeatures.contains(TNumericFeatures::shader_explicit_arithmetic_types_int16);
     }
 
     bool getArithemeticFloat16Enabled() const {
         return numericFeatures.contains(TNumericFeatures::shader_explicit_arithmetic_types) ||
                numericFeatures.contains(TNumericFeatures::gpu_shader_half_float) ||
+               numericFeatures.contains(TNumericFeatures::nv_gpu_shader5_types) ||
                numericFeatures.contains(TNumericFeatures::shader_explicit_arithmetic_types_float16);
     }
     void updateNumericFeature(TNumericFeatures::feature f, bool on)
         { on ? numericFeatures.insert(f) : numericFeatures.erase(f); }
 
+    void setBuiltinAliasLookup(std::unordered_multimap<std::string, std::string> symbolMap) {
+        builtinAliasLookup = std::move(symbolMap);
+    }
+    const std::unordered_multimap<std::string, std::string>& getBuiltinAliasLookup() const {
+        return builtinAliasLookup;
+    }
+
 protected:
     TIntermSymbol* addSymbol(long long Id, const TString&, const TString&, const TType&, const TConstUnionArray&, TIntermTyped* subtree, const TSourceLoc&);
-    void error(TInfoSink& infoSink, const char*, EShLanguage unitStage = EShLangCount);
-    void warn(TInfoSink& infoSink, const char*, EShLanguage unitStage = EShLangCount);
+    void error(TInfoSink& infoSink, const TSourceLoc* loc, EShMessages messages, const char*, EShLanguage unitStage = EShLangCount);
+    void error(TInfoSink& infoSink, const char* message, EShLanguage unitStage = EShLangCount) {
+        error(infoSink, nullptr, EShMsgDefault, message, unitStage);
+    }
+    void warn(TInfoSink& infoSink, const TSourceLoc* loc, EShMessages, const char*, EShLanguage unitStage = EShLangCount);
+    void warn(TInfoSink& infoSink, const char* message, EShLanguage unitStage = EShLangCount) {
+        warn(infoSink, nullptr, EShMsgDefault, message, unitStage);
+    }
     void mergeCallGraphs(TInfoSink&, TIntermediate&);
     void mergeModes(TInfoSink&, TIntermediate&);
     void mergeTrees(TInfoSink&, TIntermediate&);
@@ -1176,6 +1283,7 @@ protected:
     bool useStorageBuffer;
     bool invariantAll;
     bool nanMinMaxClamp;            // true if desiring min/max/clamp to favor non-NaN over NaN
+    bool discardIsTerminate; // true if discard should be emitted as OpTerminateInvocation instead of OpDemoteToHelperInvocation
     bool depthReplacing;
     bool stencilReplacing;
     int localSize[3];
@@ -1185,9 +1293,9 @@ protected:
 
     std::string globalUniformBlockName;
     std::string atomicCounterBlockName;
-    unsigned int globalUniformBlockSet;
-    unsigned int globalUniformBlockBinding;
-    unsigned int atomicCounterBlockSet;
+    int globalUniformBlockSet;
+    int globalUniformBlockBinding;
+    int atomicCounterBlockSet;
 
 public:
     const char* const implicitThisName;
@@ -1223,10 +1331,18 @@ protected:
     bool geoPassthroughEXT;
     int numShaderRecordBlocks;
     ComputeDerivativeMode computeDerivativeMode;
+    TDerivativeGroupExtension computeDerivativeExtension;
     int primitives;
     int numTaskNVBlocks;
     bool layoutPrimitiveCulling;
+    bool usesOpacityMicromap2StateFlag;
+    int enableOpacityMicromapSpecId;
+    bool enableOpacityMicromapDefault;
     int numTaskEXTPayloads;
+
+    bool nonCoherentTileAttachmentReadQCOM;
+    int  tileShadingRateQCOM[3];
+    bool tileShadingRateQCOMNotDefault[3];
 
     // Base shift values
     std::array<unsigned int, EResCount> shiftBinding;
@@ -1237,11 +1353,13 @@ protected:
     std::vector<std::string> resourceSetBinding;
     bool autoMapBindings;
     bool autoMapLocations;
+    bool relaxSetBindingLimits;
     bool flattenUniformArrays;
     bool useUnknownFormat;
     bool hlslOffsets;
     bool hlslIoMapping;
     bool useVariablePointers;
+    bool bindingsPerResourceType;
 
     std::set<TString> semanticNameSet;
 
@@ -1253,6 +1371,8 @@ protected:
     bool maximallyReconverges;
     bool usePhysicalStorageBuffer;
     bool useReplicatedComposites { false };
+    bool promoteUint32Indices { false };
+    bool shader64BitIndexing { false };
 
     TSpirvRequirement* spirvRequirement;
     TSpirvExecutionMode* spirvExecutionMode;
@@ -1280,6 +1400,9 @@ protected:
 
     // Included text. First string is a name, second is the included text
     std::map<std::string, std::string> includeText;
+
+    // Maps from canonical symbol name to alias symbol names
+    std::unordered_multimap<std::string, std::string> builtinAliasLookup;
 
     // for OpModuleProcessed, or equivalent
     TProcesses processes;

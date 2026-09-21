@@ -4,15 +4,13 @@
 
 # News
 
-1. Building glslang as a DLL or shared library is now possible and supported.
+1. The HLSL front-end is deprecated as of April 2026 and will be removed at the next major version of glslang. See [issue #4210](https://github.com/KhronosGroup/glslang/issues/4210) for rationale and migration guidance.
 
-2. The `GenericCodeGen`, `MachineIndependent`, `OSDependent`, and `SPIRV` libraries have been integrated into the main `glslang` library. The old separate libraries have replaced with empty stubs for a temporary compatibility period, and they will be removed entirely in the future.
+2. The --shift-texture-binding\[s\] option no longer affects combined samplers. The new --shift-combined-sampler-binding\[s\] option should be used to control combined sampler bindings independently from separate textures. The old behavior can be achieved by setting both options to the same value.
 
-3. A new CMake `ENABLE_SPIRV` option has been added to control whether glslang is built with SPIR-V support. Its default value is `ON`.
+3. The spirv-remap utility from glslang has been ported to the SPIRV-Tools repository as a new optimization pass called canonicalize-ids, available in spirv-opt. See spirv-opt --help for usage details.
 
-4. `OGLCompiler` and `HLSL` stub libraries have been fully removed from the build.
-
-Users are encouraged to utilize the standard approach via [CMAKE_MSVC_RUNTIME_LIBRARY](https://cmake.org/cmake/help/latest/variable/CMAKE_MSVC_RUNTIME_LIBRARY.html).
+4. Building glslang as a DLL or shared library is now possible and supported.
 
 # Glslang Components and Status
 
@@ -28,10 +26,11 @@ An OpenGL GLSL and OpenGL|ES GLSL (ESSL) front-end for reference validation and 
 
 An HLSL front-end for translation of an approximation of HLSL to glslang's AST form.
 
-**Status**: Partially complete. Semantics are not reference quality and input is not validated.
-This is in contrast to the [DXC project](https://github.com/Microsoft/DirectXShaderCompiler), which receives a much larger investment and attempts to have definitive/reference-level semantics.
+**Status**: Deprecated as of April 2026. The HLSL front-end will be removed at the next major version of glslang, with at least 18 months of notice from this announcement.
 
-See [issue 362](https://github.com/KhronosGroup/glslang/issues/362) and [issue 701](https://github.com/KhronosGroup/glslang/issues/701) for current status.
+Bug reports for the HLSL front-end will no longer be accepted. Security issues will be assessed on a case-by-case basis. Projects that require continued HLSL support should maintain a fork of glslang at the tag corresponding to the deprecation announcement.
+
+See [issue #4210](https://github.com/KhronosGroup/glslang/issues/4210) for the rationale and migration guidance.
 
 ### AST -> SPIR-V Back End
 
@@ -126,24 +125,24 @@ git clone https://github.com/KhronosGroup/glslang.git
 
 #### 3) Configure
 
-Assume the source directory is `$SOURCE_DIR` and the build directory is
-`$BUILD_DIR`. First ensure the build directory exists, then navigate to it:
+Assume the source directory is `$SOURCE_DIR` and the build directory is `$BUILD_DIR`.
+CMake will create the `$BUILD_DIR` for the user if it doesn't exist.
 
+First change your working directory:
 ```bash
-mkdir -p $BUILD_DIR
-cd $BUILD_DIR
+cd $SOURCE_DIR
 ```
 
 For building on Linux:
 
 ```bash
-cmake -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$(pwd)/install" $SOURCE_DIR
+cmake -B $BUILD_DIR -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
 # "Release" (for CMAKE_BUILD_TYPE) could also be "Debug" or "RelWithDebInfo"
 ```
 
 For building on Android:
 ```bash
-cmake $SOURCE_DIR -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="$(pwd)/install" -DANDROID_ABI=arm64-v8a -DCMAKE_BUILD_TYPE=Release -DANDROID_STL=c++_static -DANDROID_PLATFORM=android-24 -DCMAKE_SYSTEM_NAME=Android -DANDROID_TOOLCHAIN=clang -DANDROID_ARM_MODE=arm -DCMAKE_MAKE_PROGRAM=$ANDROID_NDK_HOME/prebuilt/linux-x86_64/bin/make -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
+cmake -B $BUILD_DIR -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="$(pwd)/install" -DANDROID_ABI=arm64-v8a -DCMAKE_BUILD_TYPE=Release -DANDROID_STL=c++_static -DANDROID_PLATFORM=android-24 -DCMAKE_SYSTEM_NAME=Android -DANDROID_TOOLCHAIN=clang -DANDROID_ARM_MODE=arm -DCMAKE_MAKE_PROGRAM=$ANDROID_NDK_HOME/prebuilt/linux-x86_64/bin/make -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
 # If on Windows will be -DCMAKE_MAKE_PROGRAM=%ANDROID_NDK_HOME%\prebuilt\windows-x86_64\bin\make.exe
 # -G is needed for building on Windows
 # -DANDROID_ABI can also be armeabi-v7a for 32 bit
@@ -152,11 +151,9 @@ cmake $SOURCE_DIR -G "Unix Makefiles" -DCMAKE_INSTALL_PREFIX="$(pwd)/install" -D
 For building on Windows:
 
 ```bash
-cmake $SOURCE_DIR -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
+cmake -B $BUILD_DIR -DCMAKE_INSTALL_PREFIX="$(pwd)/install"
 # The CMAKE_INSTALL_PREFIX part is for testing (explained later).
 ```
-
-The CMake GUI also works for Windows (version 3.4.1 tested).
 
 Also, consider using `git config --global core.fileMode false` (or with `--local`) on Windows
 to prevent the addition of execution permission on files.
@@ -174,10 +171,6 @@ cmake --build . --config Release --target install
 
 If using MSVC, after running CMake to configure, use the
 Configuration Manager to check the `INSTALL` project.
-
-If you want to enable testing via CMake set `GLSLANG_TESTS=ON` when configuring the build.
-
-`GLSLANG_TESTS` is off by default to streamline the packaging / Vulkan SDK process.
 
 ### Building (GN)
 
@@ -227,6 +220,24 @@ bison --defines=MachineIndependent/glslang_tab.cpp.h
 
 The above command is also available in the bash script in `updateGrammar`,
 when executed from the glslang subdirectory of the glslang repository.
+
+### If you need to update the NonSemantic instruction headers
+
+`SPIRV/NonSemanticShaderDebugInfo.h` and `SPIRV/NonSemanticDebugPrintf.h` are
+local copies of the canonical headers from SPIRV-Headers.  They are kept here
+because the SPIRV-Headers include path is not unconditionally available in all
+glslang build configurations (it is only present when `ENABLE_OPT` is on).
+
+When SPIRV-Headers publishes a new version of either header, copy the updated
+file from
+
+```
+External/spirv-tools/external/spirv-headers/include/spirv/unified1/
+```
+
+over the corresponding file in `SPIRV/`.  After copying, verify that the build
+still compiles and update the golden test output if instruction names or opcode
+numbers changed.
 
 ### Building to WASM for the Web and Node
 ### Building a standalone JS/WASM library for the Web and Node

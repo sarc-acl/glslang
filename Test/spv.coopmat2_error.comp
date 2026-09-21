@@ -76,4 +76,12 @@ void main()
     coopMatPerElementNV(A, A, add, float16_t(1.0), float16_t(1.0));
     coopMatPerElementNV(Af32, A, perelemf32);
     coopMatPerElementNV(Af32, A, relu);
+
+    float16_t larr[16];
+    coopMatLoadTensorNV(A, larr, 0, t);
+    coopMatStoreTensorNV(A, larr, 0, t);
+
+    coopmat<float16_t, gl_ScopeWorkgroup, 64, 32, gl_MatrixUseB> Bf16;
+    coopmat<float16_t, gl_ScopeWorkgroup, 64, 32, gl_MatrixUseAccumulator> Accf16;
+    coopMatTransposeNV(Bf16, Accf16);
 }

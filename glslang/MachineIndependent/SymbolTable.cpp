@@ -55,10 +55,15 @@ namespace glslang {
 //
 void TType::buildMangledName(TString& mangledName) const
 {
-    if (isMatrix())
+    if (isTensorARM())
+        mangledName += 'T';
+    else if (isMatrix())
         mangledName += 'm';
     else if (isVector())
         mangledName += 'v';
+
+    if (isCoopVecNV())
+        mangledName += "coopvec";
 
     switch (basicType) {
     case EbtFloat:              mangledName += 'f';      break;
@@ -67,6 +72,14 @@ void TType::buildMangledName(TString& mangledName) const
     case EbtBool:               mangledName += 'b';      break;
     case EbtDouble:             mangledName += 'd';      break;
     case EbtFloat16:            mangledName += "f16";    break;
+    case EbtBFloat16:           mangledName += "bf16";   break;
+    case EbtFloatE5M2:          mangledName += "fe5m2";  break;
+    case EbtFloatE4M3:          mangledName += "fe4m3";  break;
+    case EbtFloatE2M1:          mangledName += "fe2m1";  break;
+    case EbtFloatE3M2:          mangledName += "fe3m2";  break;
+    case EbtFloatE2M3:          mangledName += "fe2m3";  break;
+    case EbtFloatUE8M0:         mangledName += "fue8m0";  break;
+    case EbtFloatMXINT8:        mangledName += "fmxint8";break;
     case EbtInt8:               mangledName += "i8";     break;
     case EbtUint8:              mangledName += "u8";     break;
     case EbtInt16:              mangledName += "i16";    break;
@@ -78,6 +91,7 @@ void TType::buildMangledName(TString& mangledName) const
     case EbtRayQuery:           mangledName += "rq";     break;
     case EbtSpirvType:          mangledName += "spv-t";  break;
     case EbtHitObjectNV:        mangledName += "ho";     break;
+    case EbtHitObjectEXT:       mangledName += "ho";     break;
     case EbtTensorLayoutNV:     mangledName += "tl";     break;
     case EbtTensorViewNV:       mangledName += "tv";     break;
     case EbtSampler:
@@ -137,6 +151,16 @@ void TType::buildMangledName(TString& mangledName) const
         if (sampler.isMultiSample())
             mangledName += "M";
         break;
+    case EbtReference:
+        // Mangle by the block name alone, not by the referent's members. The parser rejects a
+        // second block with the same name, so the name already identifies the type. Recursing
+        // into the referent the way the struct case does would not terminate: a buffer reference
+        // block may legally name itself or another block that refers back to it, which a struct
+        // cannot do.
+        mangledName += "bref-";
+        if (typeName)
+            mangledName += *typeName;
+        break;
     case EbtStruct:
     case EbtBlock:
         if (basicType == EbtStruct)
@@ -161,6 +185,23 @@ void TType::buildMangledName(TString& mangledName) const
     else {
         mangledName += static_cast<char>('0' + getMatrixCols());
         mangledName += static_cast<char>('0' + getMatrixRows());
+    }
+
+    if (typeParameters) {
+        const int maxSize = 11;
+        char buf[maxSize];
+        for (int i = 0; i < typeParameters->arraySizes->getNumDims(); ++i) {
+            if (typeParameters->arraySizes->getDimNode(i)) {
+                if (typeParameters->arraySizes->getDimNode(i)->getAsSymbolNode())
+                    snprintf(buf, maxSize, "s%lld", typeParameters->arraySizes->getDimNode(i)->getAsSymbolNode()->getId());
+                else
+                    snprintf(buf, maxSize, "s%p", typeParameters->arraySizes->getDimNode(i));
+            } else
+                snprintf(buf, maxSize, "%d", typeParameters->arraySizes->getDimSize(i));
+            mangledName += '<';
+            mangledName += buf;
+            mangledName += '>';
+        }
     }
 
     if (arraySizes) {
@@ -321,6 +362,24 @@ void TSymbolTableLevel::setFunctionExtensions(const char* name, int num, const c
     }
 }
 
+// Call the callback function to determine the required extensions
+void TSymbolTableLevel::setFunctionExtensionsCallback(const char* name, std::function<std::vector<const char *>(const char *)> const &func)
+{
+    tLevel::const_iterator candidate = level.lower_bound(name);
+    while (candidate != level.end()) {
+        const TString& candidateName = (*candidate).first;
+        TString::size_type parenAt = candidateName.find_first_of('(');
+        if (parenAt != candidateName.npos && candidateName.compare(0, parenAt, name) == 0) {
+            TSymbol* symbol = candidate->second;
+
+            auto exts = func(candidateName.c_str());
+            symbol->setExtensions(exts.size(), exts.data());
+        } else
+            break;
+        ++candidate;
+    }
+}
+
 // Make a single function require an extension(s). i.e., this will only set the extensions for the symbol that matches 'name' exactly.
 // This is different from setFunctionExtensions, which uses std::map::lower_bound to effectively set all symbols that start with 'name'.
 // Should only be used for a version/profile that actually needs the extension(s).
@@ -400,9 +459,11 @@ TFunction::TFunction(const TFunction& copyOf) : TSymbol(copyOf)
     defined = copyOf.defined;
     prototyped = copyOf.prototyped;
     implicitThis = copyOf.implicitThis;
+    variadic = copyOf.variadic;
     illegalImplicitThis = copyOf.illegalImplicitThis;
     defaultParamCount = copyOf.defaultParamCount;
     spirvInst = copyOf.spirvInst;
+    functionControl = copyOf.functionControl;
 }
 
 TFunction* TFunction::clone() const

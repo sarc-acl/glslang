@@ -777,6 +777,8 @@ void RecordProcesses(TIntermediate& intermediate, EShMessages messages, const st
         intermediate.addProcess("suppress-warnings");
     if ((messages & EShMsgKeepUncalled) != 0)
         intermediate.addProcess("keep-uncalled");
+    if ((messages & EShMsgRelaxSetBindingLimits) != 0)
+        intermediate.setRelaxSetBindingLimits(true);
     if (sourceEntryPointName.size() > 0) {
         intermediate.addProcess("source-entrypoint");
         intermediate.addProcessArgument(sourceEntryPointName);
@@ -1076,6 +1078,28 @@ private:
     int lastLine;
 };
 
+// Re-escape characters that would otherwise be emitted literally
+// so the preprocessed output remains valid GLSL source.
+static void appendEscapedString(std::string& output, const char* string) {
+
+    for (const char* p = string; *p != '\0'; ++p) {
+        switch (*p) {
+        case '"': output += "\\\""; break;
+        case '\\': output += "\\\\"; break;
+        case '\a': output += "\\a"; break;
+        case '\b': output += "\\b"; break;
+        case '\f': output += "\\f"; break;
+        case '\n': output += "\\n"; break;
+        case '\r': output += "\\r"; break;
+        case '\t': output += "\\t"; break;
+        case '\v': output += "\\v"; break;
+        default:
+            output += *p;
+            break;
+        }
+    }
+}
+
 // DoPreprocessing is a valid ProcessingContext template argument,
 // which only performs the preprocessing step of compilation.
 // It places the result in the "string" argument to its constructor.
@@ -1176,7 +1200,8 @@ struct DoPreprocessing {
                 // Don't emit whitespace onto empty lines.
                 // Copy any whitespace characters at the start of a line
                 // from the input to the output.
-                outputBuffer += std::string(ppToken.loc.column - 1, ' ');
+                if (ppToken.loc.column > 0)
+                    outputBuffer += std::string(ppToken.loc.column - 1, ' ');
             }
 
             // Output a space in between tokens, but not at the start of a line,
@@ -1200,11 +1225,13 @@ struct DoPreprocessing {
             if (token == PpAtomIdentifier)
                 lastTokenName = ppToken.name;
             lastToken = token;
-            if (token == PpAtomConstString)
+            if (token == PpAtomConstString) {
                 outputBuffer += "\"";
-            outputBuffer += ppToken.name;
-            if (token == PpAtomConstString)
+                appendEscapedString(outputBuffer, ppToken.name);
                 outputBuffer += "\"";
+            } else {
+                outputBuffer += ppToken.name;
+            }
         } while (true);
         outputBuffer += '\n';
         *outputString = std::move(outputBuffer);
@@ -1526,7 +1553,7 @@ int ShLinkExt(
 
     if (linker == nullptr)
         return 0;
-    
+
     SetThreadPoolAllocator(linker->getPool());
     linker->infoSink.info.erase();
 
@@ -1816,6 +1843,7 @@ void TShader::setInvertY(bool invert)                   { intermediate->setInver
 void TShader::setDxPositionW(bool invert)               { intermediate->setDxPositionW(invert); }
 void TShader::setEnhancedMsgs()                         { intermediate->setEnhancedMsgs(); }
 void TShader::setNanMinMaxClamp(bool useNonNan)         { intermediate->setNanMinMaxClamp(useNonNan); }
+void TShader::setDiscardIsTerminate(bool discardIsTerminate) { intermediate->setDiscardIsTerminate(discardIsTerminate); }
 
 // Set binding base for given resource type
 void TShader::setShiftBinding(TResourceType res, unsigned int base) {
@@ -1855,6 +1883,7 @@ void TShader::setUniformLocationBase(int base)
 {
     intermediate->setUniformLocationBase(base);
 }
+void TShader::setBindingsPerResourceType() { intermediate->setBindingsPerResourceType(); }
 void TShader::setNoStorageFormat(bool useUnknownFormat) { intermediate->setNoStorageFormat(useUnknownFormat); }
 void TShader::setResourceSetBinding(const std::vector<std::string>& base)   { intermediate->setResourceSetBinding(base); }
 void TShader::setTextureSamplerTransformMode(EShTextureSamplerTransformMode mode) { intermediate->setTextureSamplerTransformMode(mode); }
@@ -1979,6 +2008,14 @@ bool TProgram::link(EShMessages messages)
             error = true;
     }
 
+    if (messages & EShMsgAST) {
+        for (int s = 0; s < EShLangCount; ++s) {
+            if (intermediate[s] == nullptr)
+                continue;
+            intermediate[s]->output(*infoSink, true);
+        }
+    }
+
     return ! error;
 }
 
@@ -2044,9 +2081,6 @@ bool TProgram::linkStage(EShLanguage stage, EShMessages messages)
     }
     intermediate[stage]->finalCheck(*infoSink, (messages & EShMsgKeepUncalled) != 0);
 
-    if (messages & EShMsgAST)
-        intermediate[stage]->output(*infoSink, true);
-
     return intermediate[stage]->getNumErrors() == 0;
 }
 
@@ -2070,9 +2104,27 @@ bool TProgram::crossStageCheck(EShMessages messages) {
             activeStages.push_back(intermediate[s]);
     }
 
+    class TFinalLinkTraverser : public TIntermTraverser {
+    public:
+        TFinalLinkTraverser() { }
+        virtual ~TFinalLinkTraverser() { }
+
+        virtual void visitSymbol(TIntermSymbol* symbol)
+        {
+            // Implicitly size arrays.
+            // If an unsized array is left as unsized, it effectively
+            // becomes run-time sized.
+            symbol->getWritableType().adoptImplicitArraySizes(false);
+        }
+    } finalLinkTraverser;
+
     // no extra linking if there is only one stage
-    if (! (activeStages.size() > 1))
+    if (! (activeStages.size() > 1)) {
+        if (activeStages.size() == 1 && activeStages[0]->getTreeRoot()) {
+            activeStages[0]->getTreeRoot()->traverse(&finalLinkTraverser);
+        }
         return true;
+    }
 
     // setup temporary tree to hold unfirom objects from different stages
     TIntermediate* firstIntermediate = activeStages.front();
@@ -2094,6 +2146,12 @@ bool TProgram::crossStageCheck(EShMessages messages) {
     }
     error |= uniforms.getNumErrors() != 0;
 
+    // update implicit array sizes across shader stages
+    for (unsigned int i = 0; i < activeStages.size(); ++i) {
+        activeStages[i]->mergeImplicitArraySizes(*infoSink, uniforms);
+        activeStages[i]->getTreeRoot()->traverse(&finalLinkTraverser);
+    }
+
     // copy final definition of global block back into each stage
     for (unsigned int i = 0; i < activeStages.size(); ++i) {
         // We only want to merge into already existing global uniform blocks.
@@ -2106,8 +2164,8 @@ bool TProgram::crossStageCheck(EShMessages messages) {
 
     // compare cross stage symbols for each stage boundary
     for (unsigned int i = 1; i < activeStages.size(); ++i) {
-        activeStages[i - 1]->checkStageIO(*infoSink, *activeStages[i]);
-        error |= (activeStages[i - 1]->getNumErrors() != 0);
+        activeStages[i - 1]->checkStageIO(*infoSink, *activeStages[i], messages);
+        error |= (activeStages[i - 1]->getNumErrors() != 0 || activeStages[i]->getNumErrors() != 0);
     }
 
     // if requested, optimize cross stage IO
@@ -2171,6 +2229,7 @@ bool TProgram::buildReflection(int opts)
 }
 
 unsigned TProgram::getLocalSize(int dim) const                        { return reflection->getLocalSize(dim); }
+unsigned TProgram::getTileShadingRateQCOM(int dim) const              { return reflection->getTileShadingRateQCOM(dim); }
 int TProgram::getReflectionIndex(const char* name) const              { return reflection->getIndex(name); }
 int TProgram::getReflectionPipeIOIndex(const char* name, const bool inOrOut) const
                                                                       { return reflection->getPipeIOIndex(name, inOrOut); }

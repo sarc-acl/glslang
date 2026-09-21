@@ -144,7 +144,7 @@ public:
                 // by convention if this is an arrayed block we ignore the array in the reflection
                 if (type.isArray() && type.getBasicType() == EbtBlock) {
                     blowUpIOAggregate(input, baseName, TType(type, 0));
-                } else {               
+                } else {
                     blowUpIOAggregate(input, baseName, type);
                 }
             } else {
@@ -460,7 +460,7 @@ public:
 
             variables.back().topLevelArraySize = topLevelArraySize;
             variables.back().topLevelArrayStride = topLevelArrayStride;
-            
+
             if ((reflection.options & EShReflectionAllBlockVariables) && active) {
                 EShLanguageMask& stages = variables.back().stages;
                 stages = static_cast<EShLanguageMask>(stages | 1 << intermediate.getStage());
@@ -477,7 +477,7 @@ public:
             }
         }
     }
-    
+
     // similar to blowUpActiveAggregate, but with simpler rules and no dereferences to follow.
     void blowUpIOAggregate(bool input, const TString &baseName, const TType &type)
     {
@@ -501,6 +501,10 @@ public:
                 const TTypeList& typeList = *type.getStruct();
 
                 for (int i = 0; i < (int)typeList.size(); ++i) {
+                    // A member left out of a block redeclaration, or not available without an
+                    // extension, is not part of the interface.
+                    if (typeList[i].type->hiddenMember())
+                        continue;
                     TString newBaseName = name;
                     if (newBaseName.size() > 0)
                         newBaseName.append(".");
@@ -586,7 +590,7 @@ public:
 
             const TString& blockName = base->getType().getTypeName();
             TString baseName;
-            
+
             if (! anonymous)
                 baseName = blockName;
 
@@ -1138,8 +1142,10 @@ void TReflection::buildAttributeReflection(EShLanguage stage, const TIntermediat
 {
     if (stage == EShLangCompute) {
         // Remember thread dimensions
-        for (int dim=0; dim<3; ++dim)
+        for (int dim=0; dim<3; ++dim) {
             localSize[dim] = intermediate.getLocalSize(dim);
+            tileShadingRateQCOM[dim] = intermediate.getTileShadingRateQCOM(dim);
+        }
     }
 }
 
@@ -1270,13 +1276,18 @@ void TReflection::dump()
         indexToPipeOutput[i].dump();
     printf("\n");
 
+    static const char* axis[] = { "X", "Y", "Z" };
     if (getLocalSize(0) > 1) {
-        static const char* axis[] = { "X", "Y", "Z" };
-
         for (int dim=0; dim<3; ++dim)
             if (getLocalSize(dim) > 1)
                 printf("Local size %s: %u\n", axis[dim], getLocalSize(dim));
 
+        printf("\n");
+    }
+
+    if (getTileShadingRateQCOM(0) > 1 || getTileShadingRateQCOM(1) > 1) {
+        for (int dim=0; dim<3; ++dim)
+            printf("Tile shading rate QCOM %s: %u\n", axis[dim], getTileShadingRateQCOM(dim));
         printf("\n");
     }
 

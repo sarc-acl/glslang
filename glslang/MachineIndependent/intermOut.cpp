@@ -81,6 +81,7 @@ public:
     virtual bool visitLoop(TVisit, TIntermLoop* node);
     virtual bool visitBranch(TVisit, TIntermBranch* node);
     virtual bool visitSwitch(TVisit, TIntermSwitch* node);
+    virtual bool visitVariableDecl(TVisit, TIntermVariableDecl* node);
 
     TInfoSink& infoSink;
 protected:
@@ -312,6 +313,30 @@ bool TOutputTraverser::visitUnary(TVisit /* visit */, TIntermUnary* node)
     case EOpUnpackUint4x16:   out.debug << "unpackUint4x16";     break;
     case EOpPackFloat2x16:    out.debug << "packFloat2x16";      break;
     case EOpUnpackFloat2x16:  out.debug << "unpackFloat2x16";    break;
+
+    case EOpUnpackFloat2xE2M1:  out.debug << "unpackFloat2xfe2m1EXT";   break;
+    case EOpUnpackFloat4xE2M1:  out.debug << "unpackFloat4xfe2m1EXT";   break;
+    case EOpUnpackFloat8xE2M1:  out.debug << "unpackFloat8xfe2m1EXT";   break;
+    case EOpUnpackFloat16xE2M1: out.debug << "unpackFloat16xfe2m1EXT";  break;
+    case EOpPackFloat2xE2M1:    out.debug << "packFloat2xfe2m1EXT";     break;
+    case EOpPackFloat4xE2M1:    out.debug << "packFloat4xfe2m1EXT";     break;
+    case EOpPackFloat8xE2M1:    out.debug << "packFloat8xfe2m1EXT";     break;
+    case EOpPackFloat16xE2M1:   out.debug << "packFloat16xfe2m1EXT";    break;
+    case EOpUnpackFloat4xE3M2:  out.debug << "unpackFloat4xfe3m2EXT";   break;
+    case EOpUnpackFloat8xE3M2:  out.debug << "unpackFloat8xfe3m2EXT";   break;
+    case EOpUnpackFloat16xE3M2: out.debug << "unpackFloat16xfe3m2EXT";  break;
+    case EOpPackFloat4xE3M2:    out.debug << "packFloat4xfe3m2EXT";     break;
+    case EOpPackFloat8xE3M2:    out.debug << "packFloat8xfe3m2EXT";     break;
+    case EOpPackFloat16xE3M2:   out.debug << "packFloat16xfe3m2EXT";    break;
+    case EOpUnpackFloat4xE2M3:  out.debug << "unpackFloat4xfe2m3EXT";   break;
+    case EOpUnpackFloat8xE2M3:  out.debug << "unpackFloat8xfe2m3EXT";   break;
+    case EOpUnpackFloat16xE2M3: out.debug << "unpackFloat16xfe2m3EXT";  break;
+    case EOpPackFloat4xE2M3:    out.debug << "packFloat4xfe2m3EXT";     break;
+    case EOpPackFloat8xE2M3:    out.debug << "packFloat8xfe2m3EXT";     break;
+    case EOpPackFloat16xE2M3:   out.debug << "packFloat16xfe2m3EXT";    break;
+    case EOpBitcastExtractE2M1: out.debug << "bitcastExtractfe2m1EXT";  break;
+    case EOpBitcastExtractE3M2: out.debug << "bitcastExtractfe3m2EXT";  break;
+    case EOpBitcastExtractE2M3: out.debug << "bitcastExtractfe2m3EXT";  break;
 
     case EOpLength:         out.debug << "length";               break;
     case EOpNormalize:      out.debug << "normalize";            break;
@@ -625,6 +650,38 @@ bool TOutputTraverser::visitAggregate(TVisit /* visit */, TIntermAggregate* node
     case EOpConstructBMat4x2: out.debug << "Construct bmat4x2"; break;
     case EOpConstructBMat4x3: out.debug << "Construct bmat4x3"; break;
     case EOpConstructBMat4x4: out.debug << "Construct bmat4";   break;
+    case EOpConstructBFloat16:  out.debug << "Construct bfloat16_t"; break;
+    case EOpConstructBF16Vec2:  out.debug << "Construct bf16vec2";   break;
+    case EOpConstructBF16Vec3:  out.debug << "Construct bf16vec3";   break;
+    case EOpConstructBF16Vec4:  out.debug << "Construct bf16vec4";   break;
+    case EOpConstructFloatE5M2:  out.debug << "Construct floate5m2_t"; break;
+    case EOpConstructFloatE5M2Vec2:  out.debug << "Construct fe5m2vec2";   break;
+    case EOpConstructFloatE5M2Vec3:  out.debug << "Construct fe5m2vec3";   break;
+    case EOpConstructFloatE5M2Vec4:  out.debug << "Construct fe5m2vec4";   break;
+    case EOpConstructFloatE4M3:  out.debug << "Construct floate4m3_t"; break;
+    case EOpConstructFloatE4M3Vec2:  out.debug << "Construct fe4m3vec2";   break;
+    case EOpConstructFloatE4M3Vec3:  out.debug << "Construct fe4m3vec3";   break;
+    case EOpConstructFloatE4M3Vec4:  out.debug << "Construct fe4m3vec4";   break;
+    case EOpConstructFloatE2M1:  out.debug << "Construct floate2m1_t"; break;
+    case EOpConstructFloatE2M1Vec2:  out.debug << "Construct fe2m1vec2";   break;
+    case EOpConstructFloatE2M1Vec3:  out.debug << "Construct fe2m1vec3";   break;
+    case EOpConstructFloatE2M1Vec4:  out.debug << "Construct fe2m1vec4";   break;
+    case EOpConstructFloatE3M2:  out.debug << "Construct floate3m2_t"; break;
+    case EOpConstructFloatE3M2Vec2:  out.debug << "Construct fe3m2vec2";   break;
+    case EOpConstructFloatE3M2Vec3:  out.debug << "Construct fe3m2vec3";   break;
+    case EOpConstructFloatE3M2Vec4:  out.debug << "Construct fe3m2vec4";   break;
+    case EOpConstructFloatE2M3:  out.debug << "Construct floate2m3_t"; break;
+    case EOpConstructFloatE2M3Vec2:  out.debug << "Construct fe2m3vec2";   break;
+    case EOpConstructFloatE2M3Vec3:  out.debug << "Construct fe2m3vec3";   break;
+    case EOpConstructFloatE2M3Vec4:  out.debug << "Construct fe2m3vec4";   break;
+    case EOpConstructFloatUE8M0:  out.debug << "Construct floatue8m0_t"; break;
+    case EOpConstructFloatUE8M0Vec2:  out.debug << "Construct fue8m0vec2";   break;
+    case EOpConstructFloatUE8M0Vec3:  out.debug << "Construct fue8m0vec3";   break;
+    case EOpConstructFloatUE8M0Vec4:  out.debug << "Construct fue8m0vec4";   break;
+    case EOpConstructFloatMXINT8:  out.debug << "Construct floatmxint8_t"; break;
+    case EOpConstructFloatMXINT8Vec2:  out.debug << "Construct fmxint8vec2";   break;
+    case EOpConstructFloatMXINT8Vec3:  out.debug << "Construct fmxint8vec3";   break;
+    case EOpConstructFloatMXINT8Vec4:  out.debug << "Construct fmxint8vec4";   break;
     case EOpConstructFloat16:   out.debug << "Construct float16_t"; break;
     case EOpConstructF16Vec2:   out.debug << "Construct f16vec2";   break;
     case EOpConstructF16Vec3:   out.debug << "Construct f16vec3";   break;
@@ -643,7 +700,13 @@ bool TOutputTraverser::visitAggregate(TVisit /* visit */, TIntermAggregate* node
     case EOpConstructReference:  out.debug << "Construct reference";  break;
     case EOpConstructCooperativeMatrixNV:  out.debug << "Construct cooperative matrix NV";  break;
     case EOpConstructCooperativeMatrixKHR:  out.debug << "Construct cooperative matrix KHR";  break;
+    case EOpConstructCooperativeVectorNV:  out.debug << "Construct cooperative vector NV";  break;
     case EOpConstructAccStruct: out.debug << "Construct acceleration structure"; break;
+
+    case EOpBitCastArrayQCOM:              out.debug << "Bitcast To Array QCOM"; break;
+    case EOpExtractSubArrayQCOM:           out.debug << "Extract Subarray QCOM"; break;
+    case EOpCompositeConstructCoopMatQCOM:   out.debug << "Construct Cooperative Matrix QCOM"; break;
+    case EOpCompositeExtractCoopMatQCOM:     out.debug << "Extract Cooperative Matrix QCOM"; break;
 
     case EOpLessThan:         out.debug << "Compare Less Than";             break;
     case EOpGreaterThan:      out.debug << "Compare Greater Than";          break;
@@ -667,6 +730,9 @@ bool TOutputTraverser::visitAggregate(TVisit /* visit */, TIntermAggregate* node
 
     case EOpDistance:      out.debug << "distance";                break;
     case EOpDot:           out.debug << "dot-product";             break;
+    case EOpDotPackedEXT:  out.debug << "dot-product-packed";break;
+    case EOpDotAccSatEXT:  out.debug << "dot-product-accumulate-saturate";break;
+    case EOpDotPackedAccSatEXT:  out.debug << "dot-product-packed-accumulate-saturate";break;
     case EOpCross:         out.debug << "cross-product";           break;
     case EOpFaceForward:   out.debug << "face-forward";            break;
     case EOpReflect:       out.debug << "reflect";                 break;
@@ -784,6 +850,14 @@ bool TOutputTraverser::visitAggregate(TVisit /* visit */, TIntermAggregate* node
     case EOpSparseTextureGatherLodOffset:   out.debug << "sparseTextureGatherLodOffset";    break;
     case EOpSparseTextureGatherLodOffsets:  out.debug << "sparseTextureGatherLodOffsets";   break;
     case EOpSparseImageLoadLod:             out.debug << "sparseImageLoadLod";              break;
+    case EOpTextureGather4x1QCOM:           out.debug << "textureGather4x1QCOM";            break;
+    case EOpTextureGatherV2QCOM:            out.debug << "textureGatherV2QCOM";             break;
+    case EOpTextureGatherH2QCOM:            out.debug << "textureGatherH2QCOM";             break;
+    case EOpTextureGatherDQCOM:             out.debug << "textureGatherDQCOM";              break;
+    case EOpTextureGather4x1OffsetQCOM:     out.debug << "textureGather4x1OffsetQCOM";      break;
+    case EOpTextureGatherV2OffsetQCOM:      out.debug << "textureGatherV2OffsetQCOM";       break;
+    case EOpTextureGatherH2OffsetQCOM:      out.debug << "textureGatherH2OffsetQCOM";       break;
+    case EOpTextureGatherDOffsetQCOM:       out.debug << "textureGatherDOffsetQCOM";        break;
     case EOpImageSampleFootprintNV:             out.debug << "imageSampleFootprintNV";          break;
     case EOpImageSampleFootprintClampNV:        out.debug << "imageSampleFootprintClampNV";     break;
     case EOpImageSampleFootprintLodNV:          out.debug << "imageSampleFootprintLodNV";       break;
@@ -939,6 +1013,14 @@ bool TOutputTraverser::visitAggregate(TVisit /* visit */, TIntermAggregate* node
     case EOpRayQueryGetIntersectionObjectToWorld:                          out.debug << "rayQueryGetIntersectionObjectToWorldEXT"; break;
     case EOpRayQueryGetIntersectionWorldToObject:                          out.debug << "rayQueryGetIntersectionWorldToObjectEXT"; break;
     case EOpRayQueryGetIntersectionTriangleVertexPositionsEXT:             out.debug << "rayQueryGetIntersectionTriangleVertexPositionsEXT"; break;
+    case EOpRayQueryGetIntersectionClusterIdNV:                            out.debug << "rayQueryGetIntersectionClusterIdNV"; break;
+    case EOpRayQueryGetIntersectionSpherePositionNV:                       out.debug << "rayQueryGetIntersectionSpherePositionNV"; break;
+    case EOpRayQueryGetIntersectionSphereRadiusNV:                         out.debug << "rayQueryGetIntersectionSphereRadiusNV"; break;
+    case EOpRayQueryGetIntersectionLSSHitValueNV:                          out.debug << "rayQueryGetIntersectionLSSHitValueNV"; break;
+    case EOpRayQueryGetIntersectionLSSPositionsNV:                         out.debug << "rayQueryGetIntersectionLSSPositionsNV"; break;
+    case EOpRayQueryGetIntersectionLSSRadiiNV:                             out.debug << "rayQueryGetIntersectionLSSRadiiNV"; break;
+    case EOpRayQueryIsSphereHitNV:                                         out.debug << "rayQueryIsSphereHitNV"; break;
+    case EOpRayQueryIsLSSHitNV:                                            out.debug << "rayQueryIsLSSHitNV"; break;
 
     case EOpCooperativeMatrixLoad:  out.debug << "Load cooperative matrix KHR"; break;
     case EOpCooperativeMatrixStore:  out.debug << "Store cooperative matrix KHR"; break;
@@ -951,9 +1033,22 @@ bool TOutputTraverser::visitAggregate(TVisit /* visit */, TIntermAggregate* node
     case EOpCooperativeMatrixReduceNV: out.debug << "Reduce cooperative matrices"; break;
     case EOpCooperativeMatrixPerElementOpNV: out.debug << "cooperative matrix per element op"; break;
     case EOpCooperativeMatrixTransposeNV: out.debug << "Transpose cooperative matrix"; break;
+    case EOpCooperativeMatrixGetCoordinateEXT: out.debug << "Cooperative matrix get coordinate"; break;
+
+    case EOpCooperativeVectorMatMulNV: out.debug << "Cooperative vector matrix multiply NV"; break;
+    case EOpCooperativeVectorMatMulAddNV: out.debug << "Cooperative vector matrix multiply add NV"; break;
+    case EOpCooperativeVectorLoadNV:  out.debug << "Load cooperative vector NV"; break;
+    case EOpCooperativeVectorStoreNV:  out.debug << "Store cooperative vector NV"; break;
+    case EOpCooperativeVectorOuterProductAccumulateNV: out.debug << "Cooperative vector outer product accumulate NV"; break;
+    case EOpCooperativeVectorReduceSumAccumulateNV: out.debug << "Cooperative vector reduce sum accumulate NV"; break;
+
+    case EOpTensorReadARM:   out.debug << "Read from tensor";  break;
+    case EOpTensorWriteARM:  out.debug << "Write to tensor";  break;
+    case EOpTensorSizeARM:   out.debug << "Get tensor size";  break;
 
     case EOpIsHelperInvocation: out.debug << "IsHelperInvocation"; break;
     case EOpDebugPrintf:  out.debug << "Debug printf";  break;
+    case EOpAbortEXT:  out.debug << "Abort";  break;
 
     case EOpHitObjectTraceRayNV: out.debug << "HitObjectTraceRayNV"; break;
     case EOpHitObjectTraceRayMotionNV: out.debug << "HitObjectTraceRayMotionNV"; break;
@@ -985,9 +1080,16 @@ bool TOutputTraverser::visitAggregate(TVisit /* visit */, TIntermAggregate* node
     case EOpHitObjectGetCurrentTimeNV: out.debug << "HitObjectGetCurrentTimeNV"; break;
     case EOpHitObjectGetShaderBindingTableRecordIndexNV: out.debug << "HitObjectGetShaderBindingTableRecordIndexNV"; break;
     case EOpHitObjectGetShaderRecordBufferHandleNV: out.debug << "HitObjectReadShaderRecordBufferHandleNV"; break;
+    case EOpHitObjectGetClusterIdNV: out.debug << "HitObjectGetClusterIdNV"; break;
     case EOpReorderThreadNV: out.debug << "ReorderThreadNV"; break;
     case EOpFetchMicroTriangleVertexPositionNV: out.debug << "MicroTriangleVertexPositionNV"; break;
     case EOpFetchMicroTriangleVertexBarycentricNV: out.debug << "MicroTriangleVertexBarycentricNV"; break;
+    case EOpHitObjectGetSpherePositionNV: out.debug << "HitObjectGetSpherePositionNV"; break;
+    case EOpHitObjectGetSphereRadiusNV:   out.debug << "HitObjectGetSphereRadiusNV"; break;
+    case EOpHitObjectGetLSSPositionsNV:   out.debug << "HitObjectGetLSSPositionsNV"; break;
+    case EOpHitObjectGetLSSRadiiNV:       out.debug << "HitObjectGetLSSRadiiNV"; break;
+    case EOpHitObjectIsSphereHitNV:       out.debug << "HitObjectIsSphereHitNV"; break;
+    case EOpHitObjectIsLSSHitNV:          out.debug << "HitObjectIsLSSHitNV"; break;
 
     case EOpSpirvInst: out.debug << "spirv_instruction"; break;
     case EOpStencilAttachmentReadEXT: out.debug << "stencilAttachmentReadEXT"; break;
@@ -1133,6 +1235,14 @@ static void OutputConstantUnion(TInfoSink& out, const TIntermTyped* node, const 
         case EbtFloat:
         case EbtDouble:
         case EbtFloat16:
+        case EbtBFloat16:
+        case EbtFloatE5M2:
+        case EbtFloatE4M3:
+        case EbtFloatE2M1:
+        case EbtFloatE3M2:
+        case EbtFloatE2M3:
+        case EbtFloatUE8M0:
+        case EbtFloatMXINT8:
             OutputDouble(out, constUnion[i].getDConst(), extra);
             out.debug << "\n";
             break;
@@ -1349,6 +1459,16 @@ bool TOutputTraverser::visitSwitch(TVisit /* visit */, TIntermSwitch* node)
     return false;
 }
 
+bool TOutputTraverser::visitVariableDecl(TVisit /* visit */, TIntermVariableDecl* node)
+{
+    TInfoSink& out = infoSink;
+
+    OutputTreeText(out, node, depth);
+
+    out.debug << "VarDecl: " << node->getDeclSymbol()->getName() << '\n';
+    return true;
+}
+
 //
 // This function is the one to call externally to start the traversal.
 // Individual functions can be initialized to 0 to skip processing of that
@@ -1416,6 +1536,8 @@ void TIntermediate::output(TInfoSink& infoSink, bool tree)
             infoSink.debug << "using non_coherent_depth_attachment_readEXT\n";
         if (nonCoherentStencilAttachmentReadEXT)
             infoSink.debug << "using non_coherent_stencil_attachment_readEXT\n";
+        if (nonCoherentTileAttachmentReadQCOM)
+            infoSink.debug << "using non_coherent_attachment_readQCOM\n";
         if (depthLayout != EldNone)
             infoSink.debug << "using " << TQualifier::getLayoutDepthString(depthLayout) << "\n";
         if (blendEquations != 0) {
@@ -1449,6 +1571,13 @@ void TIntermediate::output(TInfoSink& infoSink, bool tree)
                     localSizeSpecId[1] << ", " <<
                     localSizeSpecId[2] << ")\n";
             }
+        }
+        if (nonCoherentTileAttachmentReadQCOM)
+            infoSink.debug << "using non_coherent_attachment_readQCOM\n";
+        if (isTileShadingRateQCOMSet()) {
+            infoSink.debug << "shading_rateQCOM = (" << tileShadingRateQCOM[0] << ", "
+                                                     << tileShadingRateQCOM[1] << ", "
+                                                     << tileShadingRateQCOM[2] << ")\n";
         }
         break;
 
